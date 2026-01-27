@@ -1,0 +1,14 @@
+/* PatternFly Styles */
+@import '@patternfly/react-core/dist/styles/base.css';
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+}
+
+
+* {
+  box-sizing: border-box;
+}

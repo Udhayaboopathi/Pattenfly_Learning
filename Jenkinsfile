@@ -1,21 +1,29 @@
 pipeline {
     agent any
     
-    tools {
-        nodejs 'NodeJS-18' // Configure this in Jenkins Global Tool Configuration
-    }
-    
     environment {
-        DOCKER_IMAGE = 'data-management-frontend'
-        DOCKER_TAG = "${env.BUILD_NUMBER}"
-        DOCKER_REGISTRY = '' // Add your registry URL if using one (e.g., 'docker.io/username')
+        DOCKER_IMAGE = 'patternfly-frontend'
+        GIT_REPO = 'https://github.com/Udhayaboopathi/Pattenfly_Learning.git'
+        CONTAINER_NAME = 'patternfly-app'
+        APP_PORT = '80'
+        HOST_PORT = '8080'
     }
     
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out code...'
-                checkout scm
+                echo 'Checking out code from GitHub...'
+                git branch: 'main', url: "${GIT_REPO}"
+            }
+        }
+        
+        stage('Verify Environment') {
+            steps {
+                echo 'Verifying Node.js and npm versions...'
+                dir('frontend') {
+                    bat 'node -v'
+                    bat 'npm -v'
+                }
             }
         }
         
@@ -28,22 +36,32 @@ pipeline {
             }
         }
         
-        stage('Build') {
+        stage('Lint & Code Quality') {
             steps {
-                echo 'Building application...'
+                echo 'Running code quality checks...'
+                dir('frontend') {
+                    // Add linting if configured
+                    // bat 'npm run lint'
+                    echo 'Linting skipped - configure npm run lint in package.json'
+                }
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                echo 'Building React application...'
                 dir('frontend') {
                     bat 'npm run build'
                 }
             }
         }
         
-        stage('Test') {
+        stage('Run Tests') {
             steps {
                 echo 'Running tests...'
                 dir('frontend') {
-                    // Add your test command here when available
-                    // bat 'npm test'
-                    echo 'No tests configured yet'
+                    // bat 'npm test -- --watchAll=false'
+                    echo 'Tests skipped - configure npm test in package.json'
                 }
             }
         }
@@ -52,63 +70,75 @@ pipeline {
             steps {
                 echo 'Building Docker image...'
                 dir('frontend') {
-                    script {
-                        if (env.DOCKER_REGISTRY) {
-                            bat "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG} ."
-                            bat "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest ."
-                        } else {
-                            bat "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
-                            bat "docker build -t ${DOCKER_IMAGE}:latest ."
-                        }
-                    }
+                    bat "docker build -t ${DOCKER_IMAGE}:latest ."
                 }
             }
         }
         
-        stage('Push Docker Image') {
-            when {
-                branch 'main' // Only push on main branch
-            }
+        stage('Stop Old Container') {
             steps {
-                echo 'Pushing Docker image...'
+                echo 'Stopping and removing old container...'
                 script {
-                    if (env.DOCKER_REGISTRY) {
-                        // Login to Docker registry
-                        withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                            bat "docker login -u %DOCKER_USERNAME% -p %DOCKER_PASSWORD% ${DOCKER_REGISTRY}"
-                        }
-                        bat "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}"
-                        bat "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest"
-                    } else {
-                        echo 'Skipping push - no registry configured'
-                    }
+                    bat """
+                        docker stop ${CONTAINER_NAME} || echo "No container to stop"
+                        docker rm ${CONTAINER_NAME} || echo "No container to remove"
+                    """
                 }
             }
         }
         
-        stage('Deploy') {
-            when {
-                branch 'main'
-            }
+        stage('Deploy Container') {
             steps {
-                echo 'Deploying application...'
-                // Add your deployment commands here
-                // Example: bat 'docker-compose up -d'
-                echo 'Deployment steps to be configured'
+                echo 'Deploying new container...'
+                bat """
+                    docker run -d ^
+                    --name ${CONTAINER_NAME} ^
+                    -p ${HOST_PORT}:${APP_PORT} ^
+                    --restart unless-stopped ^
+                    ${DOCKER_IMAGE}:latest
+                """
+                echo "Application deployed successfully on http://localhost:${HOST_PORT}"
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                echo 'Performing health check...'
+                script {
+                    sleep(time: 10, unit: 'SECONDS')
+                    bat "docker ps -f name=${CONTAINER_NAME}"
+                    // Uncomment for HTTP health check
+                    // bat "curl -f http://localhost:${HOST_PORT} || exit 1"
+                }
+            }
+        }
+        
+        stage('Cleanup Old Images') {
+            steps {
+                echo 'Cleaning up old Docker images...'
+                script {
+                    bat 'docker image prune -f'
+                }
             }
         }
     }
     
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo '✓ Pipeline completed successfully!'
+            echo "Application is running at http://localhost:${HOST_PORT}"
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '✗ Pipeline failed! Check logs for details.'
+            // Rollback if needed
+            script {
+                bat "docker stop ${CONTAINER_NAME} || echo 'Rollback not needed'"
+            }
         }
         always {
             echo 'Cleaning up workspace...'
-            cleanWs()
+            // Uncomment to clean workspace after build
+            // cleanWs()
         }
     }
 }

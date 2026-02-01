@@ -75,49 +75,60 @@ pipeline {
             }
         }
         
-        stage('Stop Old Container') {
-            steps {
-                echo 'Stopping and removing old container...'
-                script {
-                    sh """
-                        docker stop ${CONTAINER_NAME} || echo "No container to stop"
-                        docker rm ${CONTAINER_NAME} || echo "No container to remove"
-                    """
+        stage('Deploy') {
+            agent {
+                docker {
+                    image 'docker:latest'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock'
+                    reuseNode true
                 }
             }
-        }
-        
-        stage('Deploy Container') {
-            steps {
-                echo 'Deploying new container...'
-                sh """
-                    docker run -d \\
-                    --name ${CONTAINER_NAME} \\
-                    -p ${HOST_PORT}:${APP_PORT} \\
-                    --restart unless-stopped \\
-                    ${DOCKER_IMAGE}:latest
-                """
-                echo "Application deployed successfully on http://localhost:${HOST_PORT}"
-            }
-        }
-        
-        stage('Health Check') {
-            steps {
-                echo 'Performing health check...'
-                script {
-                    sleep(time: 10, unit: 'SECONDS')
-                    sh "docker ps -f name=${CONTAINER_NAME}"
-                    // Uncomment for HTTP health check
-                    // sh "curl -f http://localhost:${HOST_PORT} || exit 1"
+            stages {
+                stage('Stop Old Container') {
+                    steps {
+                        echo 'Stopping and removing old container...'
+                        script {
+                            sh """
+                                docker stop ${CONTAINER_NAME} || echo "No container to stop"
+                                docker rm ${CONTAINER_NAME} || echo "No container to remove"
+                            """
+                        }
+                    }
                 }
-            }
-        }
-        
-        stage('Cleanup Old Images') {
-            steps {
-                echo 'Cleaning up old Docker images...'
-                script {
-                    sh 'docker image prune -f'
+                
+                stage('Deploy Container') {
+                    steps {
+                        echo 'Deploying new container...'
+                        sh """
+                            docker run -d \\
+                            --name ${CONTAINER_NAME} \\
+                            -p ${HOST_PORT}:${APP_PORT} \\
+                            --restart unless-stopped \\
+                            ${DOCKER_IMAGE}:latest
+                        """
+                        echo "Application deployed successfully on http://localhost:${HOST_PORT}"
+                    }
+                }
+                
+                stage('Health Check') {
+                    steps {
+                        echo 'Performing health check...'
+                        script {
+                            sleep(time: 10, unit: 'SECONDS')
+                            sh "docker ps -f name=${CONTAINER_NAME}"
+                            // Uncomment for HTTP health check
+                            // sh "curl -f http://localhost:${HOST_PORT} || exit 1"
+                        }
+                    }
+                }
+                
+                stage('Cleanup Old Images') {
+                    steps {
+                        echo 'Cleaning up old Docker images...'
+                        script {
+                            sh 'docker image prune -f'
+                        }
+                    }
                 }
             }
         }
@@ -130,10 +141,6 @@ pipeline {
         }
         failure {
             echo '✗ Pipeline failed! Check logs for details.'
-            // Rollback if needed
-            script {
-                sh "docker stop ${CONTAINER_NAME} || echo 'Rollback not needed'"
-            }
         }
         always {
             echo 'Cleaning up workspace...'

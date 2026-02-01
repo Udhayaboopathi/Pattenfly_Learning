@@ -21,8 +21,8 @@ pipeline {
             steps {
                 echo 'Verifying Node.js and npm versions...'
                 dir('frontend') {
-                    bat 'node -v'
-                    bat 'npm -v'
+                    sh 'node -v'
+                    sh 'npm -v'
                 }
             }
         }
@@ -31,7 +31,7 @@ pipeline {
             steps {
                 echo 'Installing dependencies...'
                 dir('frontend') {
-                    bat 'npm ci'
+                    sh 'npm ci'
                 }
             }
         }
@@ -51,7 +51,7 @@ pipeline {
             steps {
                 echo 'Building React application...'
                 dir('frontend') {
-                    bat 'npm run build'
+                    sh 'npm run build'
                 }
             }
         }
@@ -70,7 +70,7 @@ pipeline {
             steps {
                 echo 'Building Docker image...'
                 dir('frontend') {
-                    bat "docker build -t ${DOCKER_IMAGE}:latest ."
+                    sh "docker build -t ${DOCKER_IMAGE}:latest ."
                 }
             }
         }
@@ -79,7 +79,7 @@ pipeline {
             steps {
                 echo 'Stopping and removing old container...'
                 script {
-                    bat """
+                    sh """
                         docker stop ${CONTAINER_NAME} || echo "No container to stop"
                         docker rm ${CONTAINER_NAME} || echo "No container to remove"
                     """
@@ -90,11 +90,11 @@ pipeline {
         stage('Deploy Container') {
             steps {
                 echo 'Deploying new container...'
-                bat """
-                    docker run -d ^
-                    --name ${CONTAINER_NAME} ^
-                    -p ${HOST_PORT}:${APP_PORT} ^
-                    --restart unless-stopped ^
+                sh """
+                    docker run -d \\
+                    --name ${CONTAINER_NAME} \\
+                    -p ${HOST_PORT}:${APP_PORT} \\
+                    --restart unless-stopped \\
                     ${DOCKER_IMAGE}:latest
                 """
                 echo "Application deployed successfully on http://localhost:${HOST_PORT}"
@@ -106,9 +106,9 @@ pipeline {
                 echo 'Performing health check...'
                 script {
                     sleep(time: 10, unit: 'SECONDS')
-                    bat "docker ps -f name=${CONTAINER_NAME}"
+                    sh "docker ps -f name=${CONTAINER_NAME}"
                     // Uncomment for HTTP health check
-                    // bat "curl -f http://localhost:${HOST_PORT} || exit 1"
+                    // sh "curl -f http://localhost:${HOST_PORT} || exit 1"
                 }
             }
         }
@@ -117,7 +117,7 @@ pipeline {
             steps {
                 echo 'Cleaning up old Docker images...'
                 script {
-                    bat 'docker image prune -f'
+                    sh 'docker image prune -f'
                 }
             }
         }
@@ -132,7 +132,7 @@ pipeline {
             echo '✗ Pipeline failed! Check logs for details.'
             // Rollback if needed
             script {
-                bat "docker stop ${CONTAINER_NAME} || echo 'Rollback not needed'"
+                sh "docker stop ${CONTAINER_NAME} || echo 'Rollback not needed'"
             }
         }
         always {
